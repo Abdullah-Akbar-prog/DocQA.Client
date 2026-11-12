@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { BookOpen, LoaderCircle, SendHorizontal, Sparkles, Square } from 'lucide-react';
 import type { Source } from '../../api/types';
 import { useChat } from './useChat';
 import type { Turn } from './useChat';
@@ -22,9 +23,17 @@ export function ChatPanel() {
   }
 
   return (
-    <div>
+    <div className="chat-body">
       <div className="turns">
-        {turns.length === 0 && <p className="muted">Ask a question about your documents.</p>}
+        {turns.length === 0 && (
+          <div className="chat-empty">
+            <span className="bot">
+              <Sparkles size={24} />
+            </span>
+            <h3>Ask anything about your documents</h3>
+            <p>Answers come only from your uploaded files and cite the passages they used.</p>
+          </div>
+        )}
         {turns.map((turn) => (
           <TurnView key={turn.id} turn={turn} />
         ))}
@@ -39,12 +48,12 @@ export function ChatPanel() {
           maxLength={2000}
         />
         {isStreaming ? (
-          <button type="button" className="secondary" onClick={stop}>
-            Stop
+          <button type="button" className="btn ghost" onClick={stop}>
+            <Square size={14} /> Stop
           </button>
         ) : (
-          <button type="submit" disabled={!question.trim()}>
-            Ask
+          <button type="submit" className="btn" disabled={!question.trim()}>
+            <SendHorizontal size={16} /> Ask
           </button>
         )}
       </form>
@@ -57,24 +66,40 @@ function TurnView({ turn }: { turn: Turn }) {
 
   return (
     <div className="turn">
-      <div className="q">{turn.question}</div>
+      <div className="bubble-q">{turn.question}</div>
 
-      {waiting && <p className="muted">Searching your documents…</p>}
-      {turn.answer && (
-        <p className={turn.status === 'streaming' ? 'answer cursor' : 'answer'}>
-          <AnswerText text={turn.answer} />
-        </p>
-      )}
-      {turn.status === 'error' && <p className="error">{turn.error}</p>}
+      <div className="reply">
+        <span className="bot">
+          <Sparkles size={17} />
+        </span>
 
-      {turn.sources.length > 0 && (
-        <div>
-          <div className="muted">Sources</div>
-          {turn.sources.map((s) => (
-            <SourceCard key={s.id} source={s} />
-          ))}
+        <div className="reply-body">
+          {waiting && (
+            <div className="thinking">
+              <LoaderCircle size={16} className="spin" /> Searching your documents…
+            </div>
+          )}
+
+          {turn.answer && (
+            <div className={turn.status === 'streaming' ? 'bubble-a cursor' : 'bubble-a'}>
+              <AnswerText text={turn.answer} />
+            </div>
+          )}
+
+          {turn.status === 'error' && <div className="alert">{turn.error}</div>}
+
+          {turn.sources.length > 0 && (
+            <div>
+              <div className="sources-title">
+                <BookOpen size={13} /> Sources
+              </div>
+              {turn.sources.map((s) => (
+                <SourceCard key={s.id} source={s} />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -100,9 +125,12 @@ function SourceCard({ source }: { source: Source }) {
   return (
     <details className="source">
       <summary>
-        [{source.id}] {source.fileName}{' '}
-        <span className="muted">
-          · chunk {source.chunkIndex} · distance {source.distance.toFixed(2)}
+        <BookOpen size={14} />
+        <span className="src-name">
+          [{source.id}] {source.fileName}
+        </span>
+        <span className="src-meta">
+          chunk {source.chunkIndex} · {source.distance.toFixed(2)}
         </span>
       </summary>
       <p className="snippet">{source.snippet}</p>

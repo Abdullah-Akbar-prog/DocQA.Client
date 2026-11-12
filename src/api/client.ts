@@ -1,6 +1,8 @@
-import type { DocumentDto, Source } from './types';
+import { clearSession, loadSession } from '../auth/session';
+import type { AuthResponse, DocumentDto, Source } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+export const API_URL = import.meta.env.VITE_API_URL ?? '';
+export const SESSION_EXPIRED_EVENT = 'docqa:session-expired';
 
 export class ApiError extends Error {
   status: number;
@@ -11,9 +13,29 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, init);
-  if (!res.ok) throw new ApiError(res.status, await readError(res));
+function authHeaders(): Record<string, string> {
+  const session = loadSession();
+  return session ? { Authorization: `Bearer ${session.token}` } : {};
+}
+
+// A 401 while we hold a token means it expired or was rejected: drop it and tell the app.
+function handleUnauthorized(res: Response) {
+  if (res.status === 401 && loadSession()) {
+    clearSession();
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: { ...authHeaders(), ...(init.headers as Record<string, string> | undefined) },
+  });
+
+  if (!res.ok) {
+    handleUnauthorized(res);
+    throw new ApiError(res.status, await readError(res));
+  }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
@@ -27,6 +49,21 @@ async function readError(res: Response): Promise<string> {
     return res.statusText;
   }
 }
+
+function jsonPost(body: unknown): RequestInit {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
+
+export const authApi = {
+  register: (email: string, password: string) =>
+    request<AuthResponse>('/api/auth/register', jsonPost({ email, password })),
+  login: (email: string, password: string) =>
+    request<AuthResponse>('/api/auth/login', jsonPost({ email, password })),
+};
 
 export const documentsApi = {
   list: () => request<DocumentDto[]>('/api/documents'),
@@ -46,7 +83,7 @@ export interface StreamHandlers {
   onError: (message: string) => void;
 }
 
-// Reads Server-Sent Events from a POST request. EventSource can't do POST, so we parse the stream ourselves.
+// Reads Server-Sent Events from a POST request. EventSource can't do POST or send headers.
 export async function askStream(
   question: string,
   handlers: StreamHandlers,
@@ -54,12 +91,13 @@ export async function askStream(
 ): Promise<void> {
   const res = await fetch(`${API_URL}/api/ask/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ question }),
     signal,
   });
 
   if (!res.ok || !res.body) {
+    handleUnauthorized(res);
     handlers.onError(await readError(res));
     return;
   }

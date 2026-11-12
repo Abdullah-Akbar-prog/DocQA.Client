@@ -17,3 +17,9 @@ export interface Source {
   distance: number;
   snippet: string;
 }
+
+export interface AuthResponse {
+  token: string;
+  expiresAt: string;
+  email: string;
+}
